@@ -1,3 +1,21 @@
+### How to connect a Google Sheet to the app
+
+1. Create a Google Cloud project and enable the Google Sheets and Drive APIs.
+2. Create a service account, and in the console create a JSON key for it. Download the JSON.
+3. Create a Google Sheet to collect the data and copy the sheet ID from the sheet URL (the long ID in the URL after /d/).
+4. Share the sheet with the service account's email address (e.g., my-service@project-id.iam.gserviceaccount.com) and give it Editor access.
+5. Open your Streamlit app on Streamlit Cloud, go to Settings → Secrets and add these keys:
+
+```
+GSHEET_ID = "<your-google-sheet-id>"
+GSHEETS_CREDENTIALS = { ... paste the JSON contents from your service account key ... }
+ADMIN_KEY = "some-strong-password"
+```
+
+6. When deployed, click into the app, click the sidebar Admin login, enter the `ADMIN_KEY`, then you should see a successful Google Sheets connection and the option to download the sheet as CSV.
+
+Security note: store the service account JSON in Streamlit Secrets (or environment variables on other hosting) and do not commit it to GitHub.
+
 # Disclosure Game
 
 This repo contains a Streamlit-based Python app `disclosure_game.py` for the PSY360 final project.

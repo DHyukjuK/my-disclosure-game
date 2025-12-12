@@ -21,6 +21,27 @@ st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
 
 # ----------------- DATA FILE SETUP -----------------
 DATA_FILE = Path(os.getenv("DATA_FILE_PATH", "disclosure_game_data.csv"))
+
+# Consistent header for both CSV and Google Sheet
+CSV_HEADERS = [
+    "timestamp",
+    "netid",
+    "timing_condition",
+    "reciprocity_condition",
+    "turn",
+    "participant_depth",
+    "partner_depth",
+    "partner_message",
+    "trust",
+    "closeness",
+    "comfort",
+    "warmth",
+    "perceived_openness",
+    "reciprocity_rating",
+    "enjoyment",
+    "strategy_adjustment",
+    "strategy_text",
+]
 GSHEET_ID = os.getenv("GSHEET_ID")
 
 
@@ -33,9 +54,9 @@ def init_gsheet_client() -> Optional[object]:
         return None
     # Read credentials from secrets or env var
     creds_json = None
-    if "secrets" in dir(st) and st.secrets.get("GSHEETS_CREDENTIALS"):
+    try:
         creds_json = st.secrets["GSHEETS_CREDENTIALS"]
-    elif os.getenv("GSHEETS_CREDENTIALS"):
+    except Exception:
         creds_json = os.getenv("GSHEETS_CREDENTIALS")
     if not creds_json:
         return None
@@ -67,6 +88,19 @@ if gsheet_client and GSHEET_ID:
         sh = gsheet_client.open_by_key(GSHEET_ID)
         # The worksheet we will use; default to the first if not specified
         gsheet_worksheet = sh.get_worksheet(0)
+        # Ensure header row exists and matches our CSV headers
+        try:
+            values = gsheet_worksheet.get_all_values()
+            if not values:
+                gsheet_worksheet.append_row(CSV_HEADERS, value_input_option="RAW")
+            elif values[0] != CSV_HEADERS:
+                # If headers differ, optionally insert our header on top.
+                # This won't overwrite an existing header, but ensure the
+                # expected columns are present in the sheet.
+                gsheet_worksheet.insert_row(CSV_HEADERS, index=1, value_input_option="RAW")
+        except Exception:
+            # Non-fatal; we proceed but the header may not exist
+            pass
     except Exception:
         gsheet_worksheet = None
 
@@ -74,25 +108,7 @@ if gsheet_client and GSHEET_ID:
 if not DATA_FILE.exists():
     with open(DATA_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "timestamp",
-            "netid",
-            "timing_condition",        # early / gradual
-            "reciprocity_condition",   # reciprocal / guarded
-            "turn",
-            "participant_depth",       # 0/1/2
-            "partner_depth",           # 0/1/2
-            "partner_message",         # partner's utterance
-            "trust",
-            "closeness",
-            "comfort",
-            "warmth",
-            "perceived_openness",
-            "reciprocity_rating",
-            "enjoyment",
-            "strategy_adjustment",
-            "strategy_text",
-        ])
+        writer.writerow(CSV_HEADERS)
 
 # ----------------- PARTNER OPENING MESSAGES -----------------
 # Openers depend on timing (early/gradual) and reciprocity style.
@@ -308,8 +324,10 @@ if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
 
 # Admin key: read from Streamlit secrets first, then environment variable.
-ADMIN_KEY = st.secrets.get("ADMIN_KEY") if "secrets" in dir(st) else None
-if not ADMIN_KEY:
+ADMIN_KEY = None
+try:
+    ADMIN_KEY = st.secrets["ADMIN_KEY"]
+except Exception:
     ADMIN_KEY = os.getenv("ADMIN_KEY")
 
 # Admin login UI
@@ -363,6 +381,31 @@ if st.session_state.admin_authenticated:
             st.sidebar.error(f"Error reading data file: {e}")
         else:
             st.sidebar.info("No data file yet (no submissions recorded).")
+    # Show Google Sheets status and offer CSV download when available
+    if gsheet_worksheet:
+        try:
+            st.sidebar.success("Google Sheet connected: " + str(GSHEET_ID))
+            values = gsheet_worksheet.get_all_values()
+            if values:
+                import csv as _csv
+                import io as _io
+                buf = _io.StringIO()
+                writer = _csv.writer(buf)
+                for r in values:
+                    writer.writerow(r)
+                buf.seek(0)
+                st.sidebar.download_button(
+                    label="Download data from Google Sheet",
+                    data=buf.getvalue().encode("utf-8"),
+                    file_name="disclosure_game_data_from_sheet.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.sidebar.info("Google Sheet connected but empty.")
+        except Exception as e:
+            st.sidebar.warning("Unable to access Google Sheet; check credentials and sharing settings.")
+    else:
+        st.sidebar.info("Google Sheets not configured. To enable: set GSHEETS_CREDENTIALS and GSHEET_ID in streamlit secrets or as environment variables.")
 
 if not st.session_state.initialized:
     if st.button("Start conversation"):
