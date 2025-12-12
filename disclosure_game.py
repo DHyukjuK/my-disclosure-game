@@ -14,7 +14,7 @@ st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
 # ----------------- DATA FILE SETUP -----------------
 DATA_FILE = Path(os.getenv("DATA_FILE_PATH", "disclosure_game_data.csv"))
 
-# Consistent header for both CSV and Google Sheet
+# Consistent header for the CSV file
 CSV_HEADERS = [
     "timestamp",
     "netid",
@@ -34,10 +34,7 @@ CSV_HEADERS = [
     "strategy_adjustment",
     "strategy_text",
 ]
-# No Google Sheets integration in this version.
-
-
-# Google Sheets integration removed: switching to admin-only CSV download
+# App stores data in a local CSV on the server; admin can download it.
 
 # If the CSV file doesn't exist yet, create it with a header row
 if not DATA_FILE.exists():
@@ -280,12 +277,12 @@ if st.session_state.admin_authenticated:
                 mime="text/csv",
             )
             # No Google Sheets: admin-only download serves the local CSV only
-            st.sidebar.info("This file is the data stored on the deployed app instance.")
+            st.sidebar.info("This file contains the data saved on the deployed app instance.")
         except Exception as e:
             st.sidebar.error(f"Error reading data file: {e}")
         else:
             st.sidebar.info("No data file yet (no submissions recorded).")
-    # Google Sheets integration removed; data is stored locally on the server
+    # Data is stored locally on the server for admin download
     total_rows = 0
     try:
         if DATA_FILE.exists():
@@ -468,11 +465,5 @@ if st.session_state.initialized and st.session_state.finished:
         st.session_state.turn = 1
         st.session_state.used_partner_messages = set()
 
-        # Note: writing to the CSV on the server does not push these changes to
-        # GitHub. If you want persistent, accessible data (for analytics or
-        # research), consider one of these approaches:
-        # - Save data to a remote database (Supabase, Firebase, PostgreSQL, etc.)
-        # - Save to a hosted Google Sheet (gspread) with service account credentials
-        # - Push data back to GitHub using the GitHub API (requires storing a
-        #   personal access token securely and is not usually recommended)
-        # - Use Streamlit's sharing platform + external persistent storage
+        # Note: writing to the CSV on the server does not sync to GitHub.
+        # For long-term storage, set up a database or a secure remote store.

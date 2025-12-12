@@ -1,21 +1,19 @@
 ### Data access and admin download
 
-- The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository.
-- **To download collected data from a deployed app**: open the deployed Streamlit app, enter the `ADMIN_KEY` in the sidebar admin login, and click **Download collected data CSV** — this downloads the runtime file the app has written. This is the simplest way to retrieve data from Streamlit Community Cloud.
- 
+- The app saves participant responses to `disclosure_game_data.csv` on the server where the app runs. This CSV does not sync back to GitHub automatically.
+- To download collected data from a deployed app: open the deployed Streamlit app, enter the `ADMIN_KEY` in the sidebar admin login, and click the **Download collected data CSV** button.
+
 ### Admin authentication
 
-- The app requires an admin key to access the CSV download. Set the admin key in Streamlit Cloud under "Settings → Secrets":
+- Set the admin key in Streamlit Cloud under "Settings → Secrets":
 
-```
+```text
 ADMIN_KEY = "your-strong-password"
 ```
 
-- Alternatively, when running locally, set the `ADMIN_KEY` environment variable:
+- When running locally, set the `ADMIN_KEY` environment variable:
 
-```bash
-export ADMIN_KEY="your-strong-password"
-# Windows (PowerShell)
+```powershell
 $env:ADMIN_KEY = "your-strong-password"
 ```
 
@@ -73,8 +71,7 @@ Other deployment options:
 
 ## Where submission data is saved
 
-- The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository.
-- **To download collected data from a deployed app**: open the deployed Streamlit app, enable the sidebar `Admin mode` checkbox, and click the **Download collected data CSV** button — this downloads the runtime file the app has written. This is the simplest way to retrieve data from Streamlit Community Cloud.
+The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository; use the admin-side download to retrieve stored data.
 
 ### Admin authentication
 
@@ -100,7 +97,7 @@ $env:ADMIN_KEY = "your-strong-password"
 	- **Supabase**: hosted Postgres with REST API and client libraries
 	- **Google Sheets** or **Google Drive** (manual/import/export) for simple non-sensitive datasets
 	- **AWS S3** or **Google Cloud Storage**: for larger CSVs or file storage
-- When deploying, store API keys and credentials safely in Streamlit Secrets (app settings on Streamlit Cloud) instead of committing them to GitHub.
+When deploying, store API keys and credentials safely in Streamlit Secrets (app settings on Streamlit Cloud) instead of committing them to GitHub.
 
 If you want, I can implement Supabase saving in the app and help set up the credentials.
 ## External storage options (optional)
