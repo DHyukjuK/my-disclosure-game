@@ -3,6 +3,7 @@ import random
 import csv
 from datetime import datetime
 from pathlib import Path
+import io
 
 # ----------------- PAGE CONFIG -----------------
 st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
@@ -228,6 +229,27 @@ st.markdown(
 
 netid = st.text_input("Your name or NetID (e.g., ab1234):", "")
 
+# ----------------- ADMIN DOWNLOAD MODE -----------------
+# Use the sidebar to reveal a simple admin-only CSV download for the file that
+# lives on the deployed server (this does NOT push the CSV to GitHub).
+admin_mode = st.sidebar.checkbox("Admin mode: show stored data file")
+if admin_mode:
+    if DATA_FILE.exists():
+        try:
+            with open(DATA_FILE, "rb") as f:
+                csv_bytes = f.read()
+            st.sidebar.download_button(
+                label="Download collected data CSV",
+                data=csv_bytes,
+                file_name="disclosure_game_data.csv",
+                mime="text/csv",
+            )
+            st.sidebar.info("This file is the data stored on the deployed app instance.")
+        except Exception as e:
+            st.sidebar.error(f"Error reading data file: {e}")
+    else:
+        st.sidebar.info("No data file yet (no submissions recorded).")
+
 if not st.session_state.initialized:
     if st.button("Start conversation"):
         if netid.strip():
@@ -389,3 +411,12 @@ if st.session_state.initialized and st.session_state.finished:
         st.session_state.history = []
         st.session_state.turn = 1
         st.session_state.used_partner_messages = set()
+
+        # Note: writing to the CSV on the server does not push these changes to
+        # GitHub. If you want persistent, accessible data (for analytics or
+        # research), consider one of these approaches:
+        # - Save data to a remote database (Supabase, Firebase, PostgreSQL, etc.)
+        # - Save to a hosted Google Sheet (gspread) with service account credentials
+        # - Push data back to GitHub using the GitHub API (requires storing a
+        #   personal access token securely and is not usually recommended)
+        # - Use Streamlit's sharing platform + external persistent storage
