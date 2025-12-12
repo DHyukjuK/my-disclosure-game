@@ -5,14 +5,6 @@ from typing import Optional
 from datetime import datetime
 from pathlib import Path
 import io
-try:
-    import gspread
-    from gspread_dataframe import get_as_dataframe
-    from google.oauth2.service_account import Credentials
-except Exception:
-    gspread = None
-    get_as_dataframe = None
-    Credentials = None
 import os
 import traceback
 
@@ -42,67 +34,10 @@ CSV_HEADERS = [
     "strategy_adjustment",
     "strategy_text",
 ]
-GSHEET_ID = os.getenv("GSHEET_ID")
+# No Google Sheets integration in this version.
 
 
-def init_gsheet_client() -> Optional[object]:
-    """Initialize a gspread client using service account credentials stored in
-    Streamlit secrets or environment variable 'GSHEETS_CREDENTIALS'. Return None
-    if credentials are not available or gspread is not installed.
-    """
-    if not gspread or not Credentials:
-        return None
-    # Read credentials from secrets or env var
-    creds_json = None
-    try:
-        creds_json = st.secrets["GSHEETS_CREDENTIALS"]
-    except Exception:
-        creds_json = os.getenv("GSHEETS_CREDENTIALS")
-    if not creds_json:
-        return None
-
-    # If the secrets store the JSON as a dict (Streamlit secrets can be nested),
-    # use it directly; otherwise, parse the JSON string.
-    try:
-        if isinstance(creds_json, dict):
-            sa_info = creds_json
-        else:
-            import json
-
-            sa_info = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(sa_info, scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ])
-        client = gspread.Client(auth=creds)
-        client.session = client.auth.authorize(creds)
-        return client
-    except Exception:
-        return None
-
-
-gsheet_client = init_gsheet_client()
-gsheet_worksheet = None
-if gsheet_client and GSHEET_ID:
-    try:
-        sh = gsheet_client.open_by_key(GSHEET_ID)
-        # The worksheet we will use; default to the first if not specified
-        gsheet_worksheet = sh.get_worksheet(0)
-        # Ensure header row exists and matches our CSV headers
-        try:
-            values = gsheet_worksheet.get_all_values()
-            if not values:
-                gsheet_worksheet.append_row(CSV_HEADERS, value_input_option="RAW")
-            elif values[0] != CSV_HEADERS:
-                # If headers differ, optionally insert our header on top.
-                # This won't overwrite an existing header, but ensure the
-                # expected columns are present in the sheet.
-                gsheet_worksheet.insert_row(CSV_HEADERS, index=1, value_input_option="RAW")
-        except Exception:
-            # Non-fatal; we proceed but the header may not exist
-            pass
-    except Exception:
-        gsheet_worksheet = None
+# Google Sheets integration removed: switching to admin-only CSV download
 
 # If the CSV file doesn't exist yet, create it with a header row
 if not DATA_FILE.exists():
@@ -221,17 +156,7 @@ def build_partner_message(partner_depth: int) -> str:
     return choose_unique_message(PARTNER_CONTENT[partner_depth])
 
 
-def append_rows_to_sheet(rows):
-    """Append a list of rows (list of lists) to the Google Sheet worksheet.
-    If no worksheet is configured or gspread is not available, returns False.
-    """
-    if not gsheet_worksheet:
-        return False
-    try:
-        gsheet_worksheet.append_rows(rows, value_input_option="RAW")
-        return True
-    except Exception:
-        return False
+
 
 
 def init_game():
@@ -354,58 +279,21 @@ if st.session_state.admin_authenticated:
                 file_name="disclosure_game_data.csv",
                 mime="text/csv",
             )
-            # Also offer Google Sheets download if configured
-            if gsheet_worksheet:
-                try:
-                    # We can also provide the sheet as CSV by fetching all values
-                    values = gsheet_worksheet.get_all_values()
-                    # Convert to CSV bytes
-                    import csv as _csv
-                    import io as _io
-
-                    buf = _io.StringIO()
-                    writer = _csv.writer(buf)
-                    for r in values:
-                        writer.writerow(r)
-                    buf.seek(0)
-                    st.sidebar.download_button(
-                        label="Download data from Google Sheet",
-                        data=buf.getvalue().encode("utf-8"),
-                        file_name="disclosure_game_data_from_sheet.csv",
-                        mime="text/csv",
-                    )
-                except Exception as e:
-                    st.sidebar.warning("Unable to access Google Sheet; check configuration and permissions.")
+            # No Google Sheets: admin-only download serves the local CSV only
             st.sidebar.info("This file is the data stored on the deployed app instance.")
         except Exception as e:
             st.sidebar.error(f"Error reading data file: {e}")
         else:
             st.sidebar.info("No data file yet (no submissions recorded).")
-    # Show Google Sheets status and offer CSV download when available
-    if gsheet_worksheet:
-        try:
-            st.sidebar.success("Google Sheet connected: " + str(GSHEET_ID))
-            values = gsheet_worksheet.get_all_values()
-            if values:
-                import csv as _csv
-                import io as _io
-                buf = _io.StringIO()
-                writer = _csv.writer(buf)
-                for r in values:
-                    writer.writerow(r)
-                buf.seek(0)
-                st.sidebar.download_button(
-                    label="Download data from Google Sheet",
-                    data=buf.getvalue().encode("utf-8"),
-                    file_name="disclosure_game_data_from_sheet.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.sidebar.info("Google Sheet connected but empty.")
-        except Exception as e:
-            st.sidebar.warning("Unable to access Google Sheet; check credentials and sharing settings.")
-    else:
-        st.sidebar.info("Google Sheets not configured. To enable: set GSHEETS_CREDENTIALS and GSHEET_ID in streamlit secrets or as environment variables.")
+    # Google Sheets integration removed; data is stored locally on the server
+    total_rows = 0
+    try:
+        if DATA_FILE.exists():
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                total_rows = sum(1 for _ in f) - 1  # subtract header
+    except Exception:
+        total_rows = 0
+    st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
 
 if not st.session_state.initialized:
     if st.button("Start conversation"):
@@ -557,14 +445,7 @@ if st.session_state.initialized and st.session_state.finished:
                         strategy_text,
                     ]
                     writer.writerow(row)
-                    # If a Google Sheet is configured, attempt to append the same
-                    # row so that data is available centrally.
-                    if gsheet_worksheet:
-                        try:
-                            append_rows_to_sheet([row])
-                        except Exception:
-                            # Non-fatal: we will show a warning but continue.
-                            st.warning("Failed to write to Google Sheet; check configuration.")
+                    # Saved locally only (server file). Admin can download it from sidebar.
         except Exception as e:
             st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
             st.exception(e)
