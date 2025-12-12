@@ -1,12 +1,11 @@
-### Data access, backups, and admin download
+### Data access and backups
 
-- The app saves participant responses to `disclosure_game_data.csv` on the server where the app runs. This CSV does not sync back to GitHub automatically, but the app includes optional local timestamped backups and an admin-only CSV export.
-- To download collected data from a deployed app: open the deployed Streamlit app, enter the `ADMIN_KEY` in the sidebar admin login, and click the **Download collected data CSV** button.
-- The app supports automatic local backups on submission and a manual "Create local backup now" admin button. Backups are stored in `backups/` by default as `disclosure_game_data_YYYYMMDD_HHMMSS.csv`.
+- The app saves participant responses to `disclosure_game_data.csv` on the server where the app runs. This CSV does not sync back to GitHub automatically, but the app includes optional local timestamped backups and a public CSV export.
+- To download collected data from a deployed app: open the deployed Streamlit app and click the **Download collected data CSV** button available in the sidebar.
+- The app supports automatic local backups on submission and a manual "Create local backup now" button visible in the sidebar. Backups are stored in `backups/` by default as `disclosure_game_data_YYYYMMDD_HHMMSS.csv`.
 
 **Environment / Streamlit Secrets**
 
-- `ADMIN_KEY` (required for admin): set this in Streamlit Cloud or as an environment variable to allow admin logins and CSV export.
 - Default backup behavior: set these in Streamlit Secrets or environment variables (optional):
 
 ```text
@@ -15,22 +14,7 @@ BACKUP_KEEP_LAST = "10"          # default is "10"
 BACKUP_DIR = "backups"           # default: backups/
 ```
 
-You can either enable/disable backups with `BACKUP_ON_SUBMIT`, or from the deployed app sidebar using the admin toggle. Manual backups are always available to admins using the "Create local backup now" button.
-
-
-### Admin authentication
-
-- Set the admin key in Streamlit Cloud under "Settings → Secrets":
-
-```text
-ADMIN_KEY = "your-strong-password"
-```
-
-- When running locally, set the `ADMIN_KEY` environment variable:
-
-```powershell
-$env:ADMIN_KEY = "your-strong-password"
-```
+You can enable/disable backups with `BACKUP_ON_SUBMIT`, or toggle them in the app sidebar using the checkbox. Manual backups are available via the "Create local backup now" button.
 
 # Disclosure Game
 
@@ -86,30 +70,12 @@ Other deployment options:
 
 ## Where submission data is saved
 
-The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository; use the admin-side download to retrieve stored data.
+The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository; use the app's sidebar download button to retrieve stored data.
 
-### Admin authentication
+### Downloading data locally and via the web UI
 
-- The app now requires an admin key to access the CSV download. Set the admin key in Streamlit Cloud under "Settings → Secrets":
-
-```
-ADMIN_KEY = "your-strong-password"
-```
-
-- Alternatively, when running locally, set the `ADMIN_KEY` environment variable:
-
-```bash
-export ADMIN_KEY="your-strong-password"
-# Windows (PowerShell)
-$env:ADMIN_KEY = "your-strong-password"
-```
-
-- In the deployed app sidebar, enter the admin key and click "Log in as admin" to reveal the download button.
-
-### Admin Data Viewer
-
-- The app includes an admin-only Data Viewer in the sidebar (requires `ADMIN_KEY`).
-- To view and download all collected submissions from the deployed app: sign into the app with admin key → open the sidebar → expand "View and download all submissions". You can download the CSV or preview submissions in a table.
+- From the deployed Streamlit app, use the side bar's "Download collected data CSV" button to export the stored data.
+- When running locally, the app writes directly to `disclosure_game_data.csv` in the working directory. You can download the CSV in the app sidebar or open it directly from disk.
 
 ### Optional: Persistent storage with Supabase
 
@@ -121,7 +87,7 @@ SUPABASE_KEY = "<service-role-or-anon-key>"
 SUPABASE_TABLE = "disclosure_game"
 ```
 
-The app will write submissions to the Supabase table in addition to the local CSV (if configured). Admins can download all rows from Supabase in the Data Viewer.
+The app will write submissions to the Supabase table in addition to the local CSV (if configured). You can download all rows from Supabase in the Data Viewer if configured.
 
 **Security note:** You can use an anonymous public key for writes if your table allows inserts, but the recommended approach is to create a Service Role key and keep it secret in Streamlit Secrets. When using Service Role keys, be extra careful to secure those secrets.
 

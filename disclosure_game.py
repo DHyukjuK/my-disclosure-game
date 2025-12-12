@@ -37,7 +37,7 @@ CSV_HEADERS = [
     "strategy_adjustment",
     "strategy_text",
 ]
-# App stores data in a local CSV on the server; admin can download it.
+# App stores data in a local CSV on the server; users can download it from the sidebar.
 
 # If the CSV file doesn't exist yet, create it with a header row
 if not DATA_FILE.exists():
@@ -326,190 +326,127 @@ st.markdown(
 
 netid = st.text_input("Your name or NetID (e.g., ab1234):", "")
 
-# ----------------- ADMIN DOWNLOAD MODE -----------------
-# Use the sidebar to reveal a simple admin-only CSV download for the file that
-# lives on the deployed server (this does NOT push the CSV to GitHub).
-if "admin_authenticated" not in st.session_state:
-    st.session_state.admin_authenticated = False
+# ----------------- DATA DOWNLOAD / BACKUPS (PUBLIC) -----------------
+# Simple: no admin login. Anyone can download the data and create backups.
+# Sidebar controls for downloads and backups (accessible to any visitor).
 
-# Admin key: read from Streamlit secrets first, then environment variable.
-ADMIN_KEY = None
+# Public toggle for creating backups on submissions (stored in session_state for convenience)
+if "local_backup_on_submit" not in st.session_state:
+    st.session_state.local_backup_on_submit = BACKUP_ON_SUBMIT
+st.session_state.local_backup_on_submit = st.sidebar.checkbox(
+    "Create local timestamped backup on each new submission",
+    value=st.session_state.local_backup_on_submit,
+)
+
+# Keep-last setting
+if "local_backup_keep_last" not in st.session_state:
+    st.session_state.local_backup_keep_last = BACKUP_KEEP_LAST
+st.session_state.local_backup_keep_last = st.sidebar.number_input(
+    "Keep this many local backups",
+    min_value=1,
+    max_value=100,
+    value=st.session_state.local_backup_keep_last,
+)
+
+# Manual backup control: create a backup immediately
 try:
-    ADMIN_KEY = st.secrets["ADMIN_KEY"]
-except Exception:
-    ADMIN_KEY = os.getenv("ADMIN_KEY")
-
-# Admin login UI
-if not st.session_state.admin_authenticated:
-    entered_key = st.sidebar.text_input("Admin key", type="password")
-    if st.sidebar.button("Log in as admin"):
-        if ADMIN_KEY and entered_key == ADMIN_KEY:
-            st.session_state.admin_authenticated = True
-            st.sidebar.success("Admin login successful.")
-        else:
-            st.sidebar.error("Invalid admin key.")
-else:
-    if st.sidebar.button("Log out of admin mode"):
-        st.session_state.admin_authenticated = False
-
-if st.session_state.admin_authenticated:
-    # Admin option: automatically show download button when new submissions arrive
-    if "admin_auto_show_on_new" not in st.session_state:
-        st.session_state.admin_auto_show_on_new = True
-    st.session_state.admin_auto_show_on_new = st.sidebar.checkbox(
-        "Auto-show download on new submissions",
-        value=st.session_state.admin_auto_show_on_new,
-    )
-
-    # Admin: local backup on new submissions toggle & retention controls
-    if "admin_local_backup_on_submit" not in st.session_state:
-        st.session_state.admin_local_backup_on_submit = BACKUP_ON_SUBMIT
-    st.session_state.admin_local_backup_on_submit = st.sidebar.checkbox(
-        "Create local timestamped backup on each new submission",
-        value=st.session_state.admin_local_backup_on_submit,
-    )
-    if "admin_local_backup_keep_last" not in st.session_state:
-        st.session_state.admin_local_backup_keep_last = BACKUP_KEEP_LAST
-    st.session_state.admin_local_backup_keep_last = st.sidebar.number_input(
-        "Keep this many local backups",
-        min_value=1,
-        max_value=100,
-        value=st.session_state.admin_local_backup_keep_last,
-    )
-    # Show recent local backups listing
-    try:
-        if BACKUP_DIR.exists():
-            backup_files = sorted(list(BACKUP_DIR.glob(f"{DATA_FILE.stem}_*{DATA_FILE.suffix}")), key=lambda p: p.stat().st_mtime, reverse=True)
-            if backup_files:
-                st.sidebar.subheader("Local CSV backups")
-                for bf in backup_files[:10]:
-                    try:
-                        bts = bf.stat().st_mtime
-                        st.sidebar.write(f"{bf.name} — {datetime.utcfromtimestamp(bts).isoformat()} UTC")
-                        with open(bf, "rb") as _bf:
-                            st.sidebar.download_button(label=f"Download {bf.name}", data=_bf.read(), file_name=bf.name, mime="text/csv")
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-    # Manual backup control (admin): create a backup immediately
-    try:
-        if st.sidebar.button("Create local backup now"):
-            try:
-                ok = create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.get("admin_local_backup_keep_last", BACKUP_KEEP_LAST))
-                if ok:
-                    st.sidebar.success("Local backup created")
-                else:
-                    st.sidebar.info("No data file to back up yet or backup failed")
-            except Exception:
-                st.sidebar.error("Backup failed due to an unexpected error")
-
-        # Show last backup timestamp
-        if BACKUP_DIR.exists():
-            existing = sorted(BACKUP_DIR.glob(f"{DATA_FILE.stem}_*{DATA_FILE.suffix}"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if existing:
-                last = existing[0].stat().st_mtime
-                st.sidebar.write(f"Last backup: {existing[0].name} — {datetime.utcfromtimestamp(last).isoformat()} UTC")
-    except Exception:
-        pass
-    if DATA_FILE.exists():
+    if st.sidebar.button("Create local backup now"):
         try:
-            with open(DATA_FILE, "rb") as f:
-                csv_bytes = f.read()
-            st.sidebar.download_button(
-                label="Download collected data CSV",
-                data=csv_bytes,
-                file_name="disclosure_game_data.csv",
-                mime="text/csv",
-            )
-            # No Google Sheets: admin-only download serves the local CSV only
-            st.sidebar.info("This file contains the data saved on the deployed app instance.")
-        except Exception as e:
-            st.sidebar.error(f"Error reading data file: {e}")
-        else:
-            st.sidebar.info("No data file yet (no submissions recorded).")
-    # Data is stored locally on the server for admin download
+            ok = create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.local_backup_keep_last)
+            if ok:
+                st.sidebar.success("Local backup created")
+            else:
+                st.sidebar.info("No data file to back up yet or backup failed")
+        except Exception:
+            st.sidebar.error("Backup failed due to an unexpected error")
+except Exception:
+    pass
+
+# Show recent local backups listing
+try:
+    if BACKUP_DIR.exists():
+        backup_files = sorted(list(BACKUP_DIR.glob(f"{DATA_FILE.stem}_*{DATA_FILE.suffix}")), key=lambda p: p.stat().st_mtime, reverse=True)
+        if backup_files:
+            st.sidebar.subheader("Local CSV backups")
+            for bf in backup_files[:10]:
+                try:
+                    bts = bf.stat().st_mtime
+                    st.sidebar.write(f"{bf.name} — {datetime.utcfromtimestamp(bts).isoformat()} UTC")
+                    with open(bf, "rb") as _bf:
+                        st.sidebar.download_button(label=f"Download {bf.name}", data=_bf.read(), file_name=bf.name, mime="text/csv")
+                except Exception:
+                    pass
+except Exception:
+    pass
+
+# Show total rows and simple download button for all users
+total_rows = 0
+try:
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            total_rows = sum(1 for _ in f) - 1  # subtract header
+except Exception:
     total_rows = 0
-    try:
-        if DATA_FILE.exists():
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                total_rows = sum(1 for _ in f) - 1  # subtract header
-    except Exception:
-        total_rows = 0
-    st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
+st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
 
-    # Show a small notice if a new submission has arrived since admin last checked
+# Single-download button for all users
+if DATA_FILE.exists():
     try:
-        if TRIGGER_FILE.exists():
-            last_trigger = TRIGGER_FILE.stat().st_mtime
-        else:
-            last_trigger = 0
-        last_seen_key = "admin_last_seen_trigger"
-        if last_seen_key not in st.session_state:
-            st.session_state[last_seen_key] = 0
-        if last_trigger > st.session_state[last_seen_key]:
-            if st.session_state.admin_auto_show_on_new:
-                st.sidebar.success("New submissions available — use the download button below.")
-            st.session_state[last_seen_key] = last_trigger
-    except Exception:
-        pass
+        with open(DATA_FILE, "rb") as f:
+            csv_bytes = f.read()
+        st.sidebar.download_button(
+            label="Download collected data CSV",
+            data=csv_bytes,
+            file_name="disclosure_game_data.csv",
+            mime="text/csv",
+        )
+    except Exception as e:
+        st.sidebar.error(f"Error reading data file: {e}")
+else:
+    st.sidebar.info("No data file yet (no submissions recorded).")
 
-    # Admin-only preview: show the last 10 submissions (no pandas required)
+# Data Viewer expander: full table and download
+with st.sidebar.expander("View and download all submissions"):
     try:
         if DATA_FILE.exists():
             with open(DATA_FILE, "r", encoding="utf-8") as _f:
                 reader = csv.DictReader(_f)
                 rows = list(reader)
-            if rows:
-                st.sidebar.subheader("Recent submissions (last 10)")
-                st.sidebar.dataframe(rows[-10:])
+        else:
+            rows = []
+
+        st.sidebar.write(f"Total submissions: {len(rows)}")
+        st.sidebar.dataframe(rows)
+        # Convert rows (list of dicts) to CSV bytes
+        import io as _io
+        if rows:
+            buf = _io.StringIO()
+            w = csv.DictWriter(buf, fieldnames=CSV_HEADERS)
+            w.writeheader()
+            w.writerows(rows)
+            csv_bytes_all = buf.getvalue().encode("utf-8")
+        else:
+            csv_bytes_all = b""
+        st.download_button(
+            label="Download full CSV",
+            data=csv_bytes_all,
+            file_name="disclosure_game_all_submissions.csv",
+            mime="text/csv",
+        )
     except Exception:
-        pass
-
-    # Admin data viewer: show a full table and download button
-    with st.sidebar.expander("View and download all submissions"):
-        try:
-            # Read from local CSV by default (no pandas required)
-            if DATA_FILE.exists():
-                with open(DATA_FILE, "r", encoding="utf-8") as _f:
-                    reader = csv.DictReader(_f)
-                    rows = list(reader)
-            else:
-                rows = []
-
-            st.write(f"Total submissions: {len(rows)}")
-            st.dataframe(rows)
-            # Convert rows (list of dicts) to CSV bytes
-            import io as _io
-            if rows:
-                buf = _io.StringIO()
-                w = csv.DictWriter(buf, fieldnames=CSV_HEADERS)
-                w.writeheader()
-                w.writerows(rows)
-                csv_bytes_all = buf.getvalue().encode("utf-8")
-            else:
-                csv_bytes_all = b""
-            st.download_button(
-                label="Download full CSV",
-                data=csv_bytes_all,
-                file_name="disclosure_game_all_submissions.csv",
-                mime="text/csv",
-            )
-        except Exception:
-            # If pandas or remote store isn't available, provide the basic CSV download
-            if DATA_FILE.exists():
-                try:
-                    with open(DATA_FILE, "rb") as _f:
-                        _csv_bytes = _f.read()
-                    st.download_button(
-                        label="Download CSV file",
-                        data=_csv_bytes,
-                        file_name="disclosure_game_data.csv",
-                        mime="text/csv",
-                    )
-                except Exception:
-                    st.warning("Unable to load the data for viewing or download.")
+        # If file read fails, try the raw CSV bytes copy
+        if DATA_FILE.exists():
+            try:
+                with open(DATA_FILE, "rb") as _f:
+                    _csv_bytes = _f.read()
+                st.download_button(
+                    label="Download CSV file",
+                    data=_csv_bytes,
+                    file_name="disclosure_game_data.csv",
+                    mime="text/csv",
+                )
+            except Exception:
+                st.warning("Unable to load the data for viewing or download.")
 
 if not st.session_state.initialized:
     if st.button("Start conversation"):
@@ -640,8 +577,8 @@ if st.session_state.initialized and st.session_state.finished:
         try:
             # Optionally back up the current CSV BEFORE appending the new submission
             try:
-                if st.session_state.get("admin_local_backup_on_submit", BACKUP_ON_SUBMIT) and DATA_FILE.exists():
-                    create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.get("admin_local_backup_keep_last", BACKUP_KEEP_LAST))
+                if st.session_state.get("local_backup_on_submit", BACKUP_ON_SUBMIT) and DATA_FILE.exists():
+                    create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.get("local_backup_keep_last", BACKUP_KEEP_LAST))
             except Exception:
                 pass
 
@@ -682,11 +619,6 @@ if st.session_state.initialized and st.session_state.finished:
                             st.info("CSV backed up to GitHub repository")
                 except Exception:
                     # Non-fatal: backups are best-effort
-                    pass
-                # Touch the trigger file so admin sessions see new submissions.
-                try:
-                    TRIGGER_FILE.write_text(datetime.utcnow().isoformat())
-                except Exception:
                     pass
         except Exception as e:
             st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
