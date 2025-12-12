@@ -91,6 +91,23 @@ $env:ADMIN_KEY = "your-strong-password"
 
 - In the deployed app sidebar, enter the admin key and click "Log in as admin" to reveal the download button.
 
+### Admin Data Viewer
+
+- The app includes an admin-only Data Viewer in the sidebar (requires `ADMIN_KEY`).
+- To view and download all collected submissions from the deployed app: sign into the app with admin key → open the sidebar → expand "View and download all submissions". You can download the CSV or preview submissions in a table.
+
+### Optional: Persistent storage with Supabase
+
+- If you want your data to persist across redeploys and server restarts, add a Supabase project and set these secrets in Streamlit:
+
+```text
+SUPABASE_URL = "https://<your>.supabase.co"
+SUPABASE_KEY = "<service-role-or-anon-key>"
+SUPABASE_TABLE = "disclosure_game"
+```
+
+The app will write submissions to the Supabase table in addition to the local CSV (if configured). Admins can download all rows from Supabase in the Data Viewer.
+
 ## Recommended long-term storage for data
 
  - Use an external database or hosted service so your data is always centrally stored and accessible:
