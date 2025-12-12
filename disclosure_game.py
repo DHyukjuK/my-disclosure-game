@@ -292,6 +292,18 @@ if st.session_state.admin_authenticated:
         total_rows = 0
     st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
 
+    # Admin-only preview: show the last 10 submissions if pandas is available
+    try:
+        import pandas as _pd
+        if DATA_FILE.exists():
+            df = _pd.read_csv(DATA_FILE)
+            if not df.empty:
+                st.sidebar.subheader("Recent submissions (last 10)")
+                st.sidebar.dataframe(df.tail(10))
+    except Exception:
+        # If pandas is missing or the file is malformed, skip the preview
+        pass
+
 if not st.session_state.initialized:
     if st.button("Start conversation"):
         if netid.strip():
