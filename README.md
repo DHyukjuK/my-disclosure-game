@@ -82,7 +82,32 @@ $env:ADMIN_KEY = "your-strong-password"
 - When deploying, store API keys and credentials safely in Streamlit Secrets (app settings on Streamlit Cloud) instead of committing them to GitHub.
 
 If you want, I can implement Supabase or Google Sheets saving in the app and help set up the credentials.
-- **Render**: Create a Web Service, specify build & start commands.
+## Google Sheets integration (recommended)
+
+This app can optionally append every submitted row to a Google Sheet. This gives you a centrally stored CSV-like table that you can view, export, and analyze without connecting to the app server filesystem. Setup steps:
+
+1. Create a Google Cloud project and enable the Google Sheets & Drive APIs.
+2. Create a service account and a JSON key for that account.
+3. Create a Google Sheet and share it with the service account email address (grant Editor permission).
+4. Add the JSON key to your Streamlit app secrets under `GSHEETS_CREDENTIALS`. Streamlit Secrets supports nested JSON — you can paste the whole JSON object.
+5. Add `GSHEET_ID` (the Google Sheet ID from the sheet URL) to Streamlit Secrets or as an environment variable.
+
+Example secrets (Streamlit Cloud, `Settings → Secrets`):
+
+```
+GSHEETS_CREDENTIALS = { ... your service-account JSON object ... }
+GSHEET_ID = "1abc...def"
+```
+
+With these secrets set, the app will append each saved submission to the first worksheet in the sheet. The admin UI allows downloading the sheet contents as a CSV.
+
+Security & best practice:
+- Do not commit keys to GitHub.
+- Use `st.secrets` or environment variables for credentials.
+- Limit who has the service account key and the sheet's sharing access.
+
+Other hosting options:
+ - **Render**: Create a Web Service, specify build & start commands.
 - **Vercel**: Not ideal for Streamlit; prefer Render or Heroku.
 
 ## Heroku Deployment (optional)
