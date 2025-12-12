@@ -1,7 +1,22 @@
-### Data access and admin download
+### Data access, backups, and admin download
 
-- The app saves participant responses to `disclosure_game_data.csv` on the server where the app runs. This CSV does not sync back to GitHub automatically.
+- The app saves participant responses to `disclosure_game_data.csv` on the server where the app runs. This CSV does not sync back to GitHub automatically, but the app includes optional local timestamped backups and an admin-only CSV export.
 - To download collected data from a deployed app: open the deployed Streamlit app, enter the `ADMIN_KEY` in the sidebar admin login, and click the **Download collected data CSV** button.
+- The app supports automatic local backups on submission and a manual "Create local backup now" admin button. Backups are stored in `backups/` by default as `disclosure_game_data_YYYYMMDD_HHMMSS.csv`.
+
+**Environment / Streamlit Secrets**
+
+- `ADMIN_KEY` (required for admin): set this in Streamlit Cloud or as an environment variable to allow admin logins and CSV export.
+- Default backup behavior: set these in Streamlit Secrets or environment variables (optional):
+
+```text
+BACKUP_ON_SUBMIT = "true"        # default is "true"
+BACKUP_KEEP_LAST = "10"          # default is "10"
+BACKUP_DIR = "backups"           # default: backups/
+```
+
+You can either enable/disable backups with `BACKUP_ON_SUBMIT`, or from the deployed app sidebar using the admin toggle. Manual backups are always available to admins using the "Create local backup now" button.
+
 
 ### Admin authentication
 

@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import io
 import os
+import shutil
 import traceback
 from typing import Dict, Any
 
@@ -91,6 +92,40 @@ def push_csv_to_github(csv_bytes: bytes) -> bool:
             payload["sha"] = sha
         put_resp = requests.put(api_url, headers=headers, data=json.dumps(payload))
         return put_resp.status_code in (201, 200)
+    except Exception:
+        return False
+
+# ----------------- LOCAL CSV BACKUP CONFIG & HELPERS -----------------
+BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "backups"))
+try:
+    BACKUP_KEEP_LAST = int(st.secrets.get("BACKUP_KEEP_LAST") or os.getenv("BACKUP_KEEP_LAST", "10"))
+except Exception:
+    BACKUP_KEEP_LAST = int(os.getenv("BACKUP_KEEP_LAST", "10"))
+try:
+    BACKUP_ON_SUBMIT = (str(st.secrets.get("BACKUP_ON_SUBMIT") or os.getenv("BACKUP_ON_SUBMIT", "true")).lower() in ("1","true","yes"))
+except Exception:
+    BACKUP_ON_SUBMIT = True
+
+
+def create_local_backup(data_file: Path = DATA_FILE, backup_dir: Path = BACKUP_DIR, keep_last: int = BACKUP_KEEP_LAST) -> bool:
+    """Create a timestamped local copy of the CSV file. Keep latest `keep_last` copies and delete older ones.
+    Returns True on success, False on failure or if there is nothing to backup.
+    """
+    try:
+        if not data_file.exists():
+            return False
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        backup_file = backup_dir / f"{data_file.stem}_{ts}{data_file.suffix}"
+        shutil.copy2(data_file, backup_file)
+        # Rotate old backups, keep the newest `keep_last` files
+        files = sorted(list(backup_dir.glob(f"{data_file.stem}_*{data_file.suffix}")), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in files[keep_last:]:
+            try:
+                old.unlink()
+            except Exception:
+                pass
+        return True
     except Exception:
         return False
 
@@ -325,6 +360,59 @@ if st.session_state.admin_authenticated:
         "Auto-show download on new submissions",
         value=st.session_state.admin_auto_show_on_new,
     )
+
+    # Admin: local backup on new submissions toggle & retention controls
+    if "admin_local_backup_on_submit" not in st.session_state:
+        st.session_state.admin_local_backup_on_submit = BACKUP_ON_SUBMIT
+    st.session_state.admin_local_backup_on_submit = st.sidebar.checkbox(
+        "Create local timestamped backup on each new submission",
+        value=st.session_state.admin_local_backup_on_submit,
+    )
+    if "admin_local_backup_keep_last" not in st.session_state:
+        st.session_state.admin_local_backup_keep_last = BACKUP_KEEP_LAST
+    st.session_state.admin_local_backup_keep_last = st.sidebar.number_input(
+        "Keep this many local backups",
+        min_value=1,
+        max_value=100,
+        value=st.session_state.admin_local_backup_keep_last,
+    )
+    # Show recent local backups listing
+    try:
+        if BACKUP_DIR.exists():
+            backup_files = sorted(list(BACKUP_DIR.glob(f"{DATA_FILE.stem}_*{DATA_FILE.suffix}")), key=lambda p: p.stat().st_mtime, reverse=True)
+            if backup_files:
+                st.sidebar.subheader("Local CSV backups")
+                for bf in backup_files[:10]:
+                    try:
+                        bts = bf.stat().st_mtime
+                        st.sidebar.write(f"{bf.name} — {datetime.utcfromtimestamp(bts).isoformat()} UTC")
+                        with open(bf, "rb") as _bf:
+                            st.sidebar.download_button(label=f"Download {bf.name}", data=_bf.read(), file_name=bf.name, mime="text/csv")
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # Manual backup control (admin): create a backup immediately
+    try:
+        if st.sidebar.button("Create local backup now"):
+            try:
+                ok = create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.get("admin_local_backup_keep_last", BACKUP_KEEP_LAST))
+                if ok:
+                    st.sidebar.success("Local backup created")
+                else:
+                    st.sidebar.info("No data file to back up yet or backup failed")
+            except Exception:
+                st.sidebar.error("Backup failed due to an unexpected error")
+
+        # Show last backup timestamp
+        if BACKUP_DIR.exists():
+            existing = sorted(BACKUP_DIR.glob(f"{DATA_FILE.stem}_*{DATA_FILE.suffix}"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if existing:
+                last = existing[0].stat().st_mtime
+                st.sidebar.write(f"Last backup: {existing[0].name} — {datetime.utcfromtimestamp(last).isoformat()} UTC")
+    except Exception:
+        pass
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE, "rb") as f:
@@ -550,6 +638,13 @@ if st.session_state.initialized and st.session_state.finished:
         reciprocity = st.session_state.reciprocity
 
         try:
+            # Optionally back up the current CSV BEFORE appending the new submission
+            try:
+                if st.session_state.get("admin_local_backup_on_submit", BACKUP_ON_SUBMIT) and DATA_FILE.exists():
+                    create_local_backup(DATA_FILE, BACKUP_DIR, st.session_state.get("admin_local_backup_keep_last", BACKUP_KEEP_LAST))
+            except Exception:
+                pass
+
             with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 _rows_for_supabase = []
