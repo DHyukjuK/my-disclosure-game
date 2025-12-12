@@ -108,6 +108,34 @@ SUPABASE_TABLE = "disclosure_game"
 
 The app will write submissions to the Supabase table in addition to the local CSV (if configured). Admins can download all rows from Supabase in the Data Viewer.
 
+**Security note:** You can use an anonymous public key for writes if your table allows inserts, but the recommended approach is to create a Service Role key and keep it secret in Streamlit Secrets. When using Service Role keys, be extra careful to secure those secrets.
+
+### Supabase table schema
+
+When creating the table in Supabase, you can use this basic SQL schema so the columns match the CSV headers used by the app:
+
+```sql
+CREATE TABLE IF NOT EXISTS disclosure_game (
+	timestamp text,
+	netid text,
+	timing_condition text,
+	reciprocity_condition text,
+	turn integer,
+	participant_depth integer,
+	partner_depth integer,
+	partner_message text,
+	trust integer,
+	closeness integer,
+	comfort integer,
+	warmth integer,
+	perceived_openness integer,
+	reciprocity_rating integer,
+	enjoyment integer,
+	strategy_adjustment integer,
+	strategy_text text
+);
+```
+
 ## Recommended long-term storage for data
 
  - Use an external database or hosted service so your data is always centrally stored and accessible:

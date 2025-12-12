@@ -7,6 +7,7 @@ from pathlib import Path
 import io
 import os
 import traceback
+from typing import Dict, Any
 
 # ----------------- PAGE CONFIG -----------------
 st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
@@ -41,6 +42,51 @@ if not DATA_FILE.exists():
     with open(DATA_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
+
+# ----------------- SUPABASE (OPTIONAL PERSISTENT STORAGE) -----------------
+# Configure SUPABASE_URL and SUPABASE_KEY in Streamlit Secrets or environment variables.
+SUPABASE_URL = None
+SUPABASE_KEY = None
+SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "disclosure_game")
+_supabase_client = None
+try:
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            from supabase import create_client as _create_client
+
+            _supabase_client = _create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception:
+            _supabase_client = None
+except Exception:
+    _supabase_client = None
+
+
+def supabase_insert(rows: list[Dict[str, Any]]) -> bool:
+    """Attempt to insert rows into Supabase. Returns True on success."""
+    if not _supabase_client:
+        return False
+    try:
+        result = _supabase_client.table(SUPABASE_TABLE).insert(rows).execute()
+        # supabase-py may return a dict-like structure
+        data = getattr(result, "data", None) or (result.get("data") if isinstance(result, dict) else None)
+        error = getattr(result, "error", None) or (result.get("error") if isinstance(result, dict) else None)
+        return (error is None) and (data is not None)
+    except Exception:
+        return False
+
+
+def supabase_fetch_all() -> list[Dict[str, Any]]:
+    """Fetch all rows from Supabase. Returns empty list on error or if not configured."""
+    if not _supabase_client:
+        return []
+    try:
+        result = _supabase_client.table(SUPABASE_TABLE).select("*").execute()
+        data = getattr(result, "data", None) or (result.get("data") if isinstance(result, dict) else None)
+        return list(data) if data else []
+    except Exception:
+        return []
 
 # ----------------- PARTNER OPENING MESSAGES -----------------
 # Openers depend on timing (early/gradual) and reciprocity style.
@@ -475,6 +521,7 @@ if st.session_state.initialized and st.session_state.finished:
         try:
             with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
+                _rows_for_supabase = []
                 for entry in st.session_state.history:
                     row = [
                         timestamp,
@@ -496,7 +543,11 @@ if st.session_state.initialized and st.session_state.finished:
                         strategy_text,
                     ]
                     writer.writerow(row)
-                    # Saved locally only (server file). Admin can download it from sidebar.
+                    # Append to list for optional Supabase insert
+                    _rows_for_supabase.append({CSV_HEADERS[i]: row[i] for i in range(len(CSV_HEADERS))})
+                # If Supabase configured, insert these rows remotely too
+                if _rows_for_supabase and supabase_insert(_rows_for_supabase):
+                    st.info("Saved to Supabase (remote persistent storage)")
         except Exception as e:
             st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
             st.exception(e)
