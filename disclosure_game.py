@@ -304,6 +304,48 @@ if st.session_state.admin_authenticated:
         # If pandas is missing or the file is malformed, skip the preview
         pass
 
+    # Admin data viewer: show a full table and download button
+    with st.sidebar.expander("View and download all submissions"):
+        try:
+            # Prefer Supabase if configured, otherwise read local CSV
+            if _supabase_client:
+                all_rows = supabase_fetch_all()
+                import pandas as _pd2
+                if all_rows:
+                    df_all = _pd2.DataFrame(all_rows)
+                else:
+                    df_all = _pd2.DataFrame(columns=CSV_HEADERS)
+            else:
+                import pandas as _pd2
+                if DATA_FILE.exists():
+                    df_all = _pd2.read_csv(DATA_FILE)
+                else:
+                    df_all = _pd2.DataFrame(columns=CSV_HEADERS)
+
+            st.write(f"Total submissions: {len(df_all)}")
+            st.dataframe(df_all)
+            csv_bytes_all = df_all.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download full CSV",
+                data=csv_bytes_all,
+                file_name="disclosure_game_all_submissions.csv",
+                mime="text/csv",
+            )
+        except Exception:
+            # If pandas or remote store isn't available, provide the basic CSV download
+            if DATA_FILE.exists():
+                try:
+                    with open(DATA_FILE, "rb") as _f:
+                        _csv_bytes = _f.read()
+                    st.download_button(
+                        label="Download CSV file",
+                        data=_csv_bytes,
+                        file_name="disclosure_game_data.csv",
+                        mime="text/csv",
+                    )
+                except Exception:
+                    st.warning("Unable to load the data for viewing or download.")
+
 if not st.session_state.initialized:
     if st.button("Start conversation"):
         if netid.strip():
