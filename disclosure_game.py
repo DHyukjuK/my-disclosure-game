@@ -1,7 +1,7 @@
 import streamlit as st
 import random
 import csv
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
 import io
@@ -43,50 +43,55 @@ if not DATA_FILE.exists():
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
 
-# ----------------- SUPABASE (OPTIONAL PERSISTENT STORAGE) -----------------
-# Configure SUPABASE_URL and SUPABASE_KEY in Streamlit Secrets or environment variables.
-SUPABASE_URL = None
-SUPABASE_KEY = None
-SUPABASE_TABLE = os.getenv("SUPABASE_TABLE", "disclosure_game")
-_supabase_client = None
+# ----------------- OPTIONAL: GITHUB BACKUP (NO ACCOUNT REQUIRED UNLESS YOU WANT IT) -----------------
+GITHUB_TOKEN = None
+GITHUB_REPO = None
+GITHUB_BRANCH = None
+GITHUB_PATH = None
 try:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            from supabase import create_client as _create_client
-
-            _supabase_client = _create_client(SUPABASE_URL, SUPABASE_KEY)
-        except Exception:
-            _supabase_client = None
+    GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+    GITHUB_REPO = st.secrets.get("GITHUB_REPO") or os.getenv("GITHUB_REPO")
+    GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH") or os.getenv("GITHUB_BRANCH", "main")
+    GITHUB_PATH = st.secrets.get("GITHUB_PATH") or os.getenv("GITHUB_PATH", "disclosure_game_data.csv")
 except Exception:
-    _supabase_client = None
+    GITHUB_TOKEN = None
+    GITHUB_REPO = None
+    GITHUB_BRANCH = None
+    GITHUB_PATH = None
 
 
-def supabase_insert(rows: list[Dict[str, Any]]) -> bool:
-    """Attempt to insert rows into Supabase. Returns True on success."""
-    if not _supabase_client:
+def push_csv_to_github(csv_bytes: bytes) -> bool:
+    """Push the CSV bytes to the configured repo path using GITHUB_TOKEN.
+    If no credentials are set, this is a no-op that returns False.
+    This avoids requiring external accounts unless you explicitly set a token.
+    """
+    if not GITHUB_TOKEN or not GITHUB_REPO:
         return False
+    import base64
+    import json
+    import requests
+
     try:
-        result = _supabase_client.table(SUPABASE_TABLE).insert(rows).execute()
-        # supabase-py may return a dict-like structure
-        data = getattr(result, "data", None) or (result.get("data") if isinstance(result, dict) else None)
-        error = getattr(result, "error", None) or (result.get("error") if isinstance(result, dict) else None)
-        return (error is None) and (data is not None)
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+        # Get current file sha if exists
+        get_resp = requests.get(api_url + f"?ref={GITHUB_BRANCH}", headers=headers)
+        if get_resp.status_code == 200:
+            sha = get_resp.json().get("sha")
+        else:
+            sha = None
+        content_b64 = base64.b64encode(csv_bytes).decode("utf-8")
+        payload = {
+            "message": "Automated CSV backup from Streamlit app",
+            "content": content_b64,
+            "branch": GITHUB_BRANCH,
+        }
+        if sha:
+            payload["sha"] = sha
+        put_resp = requests.put(api_url, headers=headers, data=json.dumps(payload))
+        return put_resp.status_code in (201, 200)
     except Exception:
         return False
-
-
-def supabase_fetch_all() -> list[Dict[str, Any]]:
-    """Fetch all rows from Supabase. Returns empty list on error or if not configured."""
-    if not _supabase_client:
-        return []
-    try:
-        result = _supabase_client.table(SUPABASE_TABLE).select("*").execute()
-        data = getattr(result, "data", None) or (result.get("data") if isinstance(result, dict) else None)
-        return list(data) if data else []
-    except Exception:
-        return []
 
 # ----------------- PARTNER OPENING MESSAGES -----------------
 # Openers depend on timing (early/gradual) and reciprocity style.
@@ -338,39 +343,41 @@ if st.session_state.admin_authenticated:
         total_rows = 0
     st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
 
-    # Admin-only preview: show the last 10 submissions if pandas is available
+    # Admin-only preview: show the last 10 submissions (no pandas required)
     try:
-        import pandas as _pd
         if DATA_FILE.exists():
-            df = _pd.read_csv(DATA_FILE)
-            if not df.empty:
+            with open(DATA_FILE, "r", encoding="utf-8") as _f:
+                reader = csv.DictReader(_f)
+                rows = list(reader)
+            if rows:
                 st.sidebar.subheader("Recent submissions (last 10)")
-                st.sidebar.dataframe(df.tail(10))
+                st.sidebar.dataframe(rows[-10:])
     except Exception:
-        # If pandas is missing or the file is malformed, skip the preview
         pass
 
     # Admin data viewer: show a full table and download button
     with st.sidebar.expander("View and download all submissions"):
         try:
-            # Prefer Supabase if configured, otherwise read local CSV
-            if _supabase_client:
-                all_rows = supabase_fetch_all()
-                import pandas as _pd2
-                if all_rows:
-                    df_all = _pd2.DataFrame(all_rows)
-                else:
-                    df_all = _pd2.DataFrame(columns=CSV_HEADERS)
+            # Read from local CSV by default (no pandas required)
+            if DATA_FILE.exists():
+                with open(DATA_FILE, "r", encoding="utf-8") as _f:
+                    reader = csv.DictReader(_f)
+                    rows = list(reader)
             else:
-                import pandas as _pd2
-                if DATA_FILE.exists():
-                    df_all = _pd2.read_csv(DATA_FILE)
-                else:
-                    df_all = _pd2.DataFrame(columns=CSV_HEADERS)
+                rows = []
 
-            st.write(f"Total submissions: {len(df_all)}")
-            st.dataframe(df_all)
-            csv_bytes_all = df_all.to_csv(index=False).encode("utf-8")
+            st.write(f"Total submissions: {len(rows)}")
+            st.dataframe(rows)
+            # Convert rows (list of dicts) to CSV bytes
+            import io as _io
+            if rows:
+                buf = _io.StringIO()
+                w = csv.DictWriter(buf, fieldnames=CSV_HEADERS)
+                w.writeheader()
+                w.writerows(rows)
+                csv_bytes_all = buf.getvalue().encode("utf-8")
+            else:
+                csv_bytes_all = b""
             st.download_button(
                 label="Download full CSV",
                 data=csv_bytes_all,
@@ -546,8 +553,17 @@ if st.session_state.initialized and st.session_state.finished:
                     # Append to list for optional Supabase insert
                     _rows_for_supabase.append({CSV_HEADERS[i]: row[i] for i in range(len(CSV_HEADERS))})
                 # If Supabase configured, insert these rows remotely too
-                if _rows_for_supabase and supabase_insert(_rows_for_supabase):
-                    st.info("Saved to Supabase (remote persistent storage)")
+                # If a GitHub token + repo is configured, back up CSV to GitHub
+                try:
+                    with open(DATA_FILE, "rb") as _backup_f:
+                        _csv_bytes_local = _backup_f.read()
+                    if GITHUB_TOKEN and GITHUB_REPO:
+                        pushed = push_csv_to_github(_csv_bytes_local)
+                        if pushed:
+                            st.info("CSV backed up to GitHub repository")
+                except Exception:
+                    # Non-fatal: backups are best-effort
+                    pass
         except Exception as e:
             st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
             st.exception(e)
