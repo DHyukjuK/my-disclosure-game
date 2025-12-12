@@ -14,6 +14,7 @@ st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
 
 # ----------------- DATA FILE SETUP -----------------
 DATA_FILE = Path(os.getenv("DATA_FILE_PATH", "disclosure_game_data.csv"))
+TRIGGER_FILE = Path(os.getenv("TRIGGER_FILE_PATH", ".submission_trigger"))
 
 # Consistent header for the CSV file
 CSV_HEADERS = [
@@ -317,6 +318,13 @@ else:
         st.session_state.admin_authenticated = False
 
 if st.session_state.admin_authenticated:
+    # Admin option: automatically show download button when new submissions arrive
+    if "admin_auto_show_on_new" not in st.session_state:
+        st.session_state.admin_auto_show_on_new = True
+    st.session_state.admin_auto_show_on_new = st.sidebar.checkbox(
+        "Auto-show download on new submissions",
+        value=st.session_state.admin_auto_show_on_new,
+    )
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE, "rb") as f:
@@ -342,6 +350,22 @@ if st.session_state.admin_authenticated:
     except Exception:
         total_rows = 0
     st.sidebar.info(f"Submissions saved on server: {max(total_rows,0)}")
+
+    # Show a small notice if a new submission has arrived since admin last checked
+    try:
+        if TRIGGER_FILE.exists():
+            last_trigger = TRIGGER_FILE.stat().st_mtime
+        else:
+            last_trigger = 0
+        last_seen_key = "admin_last_seen_trigger"
+        if last_seen_key not in st.session_state:
+            st.session_state[last_seen_key] = 0
+        if last_trigger > st.session_state[last_seen_key]:
+            if st.session_state.admin_auto_show_on_new:
+                st.sidebar.success("New submissions available — use the download button below.")
+            st.session_state[last_seen_key] = last_trigger
+    except Exception:
+        pass
 
     # Admin-only preview: show the last 10 submissions (no pandas required)
     try:
@@ -563,6 +587,11 @@ if st.session_state.initialized and st.session_state.finished:
                             st.info("CSV backed up to GitHub repository")
                 except Exception:
                     # Non-fatal: backups are best-effort
+                    pass
+                # Touch the trigger file so admin sessions see new submissions.
+                try:
+                    TRIGGER_FILE.write_text(datetime.utcnow().isoformat())
+                except Exception:
                     pass
         except Exception as e:
             st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
