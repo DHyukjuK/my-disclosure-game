@@ -4,12 +4,14 @@ import csv
 from datetime import datetime
 from pathlib import Path
 import io
+import os
+import traceback
 
 # ----------------- PAGE CONFIG -----------------
 st.set_page_config(page_title="Self-Disclosure Game", page_icon="💬")
 
 # ----------------- DATA FILE SETUP -----------------
-DATA_FILE = Path("disclosure_game_data.csv")
+DATA_FILE = Path(os.getenv("DATA_FILE_PATH", "disclosure_game_data.csv"))
 
 # If the CSV file doesn't exist yet, create it with a header row
 if not DATA_FILE.exists():
@@ -232,8 +234,28 @@ netid = st.text_input("Your name or NetID (e.g., ab1234):", "")
 # ----------------- ADMIN DOWNLOAD MODE -----------------
 # Use the sidebar to reveal a simple admin-only CSV download for the file that
 # lives on the deployed server (this does NOT push the CSV to GitHub).
-admin_mode = st.sidebar.checkbox("Admin mode: show stored data file")
-if admin_mode:
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
+
+# Admin key: read from Streamlit secrets first, then environment variable.
+ADMIN_KEY = st.secrets.get("ADMIN_KEY") if "secrets" in dir(st) else None
+if not ADMIN_KEY:
+    ADMIN_KEY = os.getenv("ADMIN_KEY")
+
+# Admin login UI
+if not st.session_state.admin_authenticated:
+    entered_key = st.sidebar.text_input("Admin key", type="password")
+    if st.sidebar.button("Log in as admin"):
+        if ADMIN_KEY and entered_key == ADMIN_KEY:
+            st.session_state.admin_authenticated = True
+            st.sidebar.success("Admin login successful.")
+        else:
+            st.sidebar.error("Invalid admin key.")
+else:
+    if st.sidebar.button("Log out of admin mode"):
+        st.session_state.admin_authenticated = False
+
+if st.session_state.admin_authenticated:
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE, "rb") as f:
@@ -247,8 +269,8 @@ if admin_mode:
             st.sidebar.info("This file is the data stored on the deployed app instance.")
         except Exception as e:
             st.sidebar.error(f"Error reading data file: {e}")
-    else:
-        st.sidebar.info("No data file yet (no submissions recorded).")
+        else:
+            st.sidebar.info("No data file yet (no submissions recorded).")
 
 if not st.session_state.initialized:
     if st.button("Start conversation"):
@@ -376,28 +398,37 @@ if st.session_state.initialized and st.session_state.finished:
         timing = st.session_state.timing
         reciprocity = st.session_state.reciprocity
 
-        with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            for entry in st.session_state.history:
-                writer.writerow([
-                    timestamp,
-                    netid_value,
-                    timing,
-                    reciprocity,
-                    entry["turn"],
-                    entry["participant_depth"],
-                    entry["partner_depth"],
-                    entry["partner_message"],
-                    trust,
-                    closeness,
-                    comfort,
-                    warmth,
-                    perceived_openness,
-                    reciprocity_rating,
-                    enjoyment,
-                    strategy_adjustment,
-                    strategy_text,
-                ])
+        try:
+            with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                for entry in st.session_state.history:
+                    writer.writerow([
+                        timestamp,
+                        netid_value,
+                        timing,
+                        reciprocity,
+                        entry["turn"],
+                        entry["participant_depth"],
+                        entry["partner_depth"],
+                        entry["partner_message"],
+                        trust,
+                        closeness,
+                        comfort,
+                        warmth,
+                        perceived_openness,
+                        reciprocity_rating,
+                        enjoyment,
+                        strategy_adjustment,
+                        strategy_text,
+                    ])
+        except Exception as e:
+            st.error("Unable to save data on the server. The file system may be read-only or there was another error.")
+            st.exception(e)
+            st.markdown("If you repeatedly see this error on the deployed app, consider using a remote database or set the `DATA_FILE_PATH` environment variable to a writable location.")
+            # Debug print trace to server logs for deploy troubleshooting
+            traceback.print_exc()
+            # Do not try to continue; leave state as-is so a retry won't lose data
+            raise
 
         st.success("Thanks! Your responses have been recorded.")
         st.markdown(

@@ -49,7 +49,39 @@ git push -u origin main
 3. Streamlit will automatically install dependencies from `requirements.txt` and build the app.
 
 Other deployment options:
-- **Heroku**: Add a `Procfile` and deploy; see `Procfile` below.
+
+## Where submission data is saved
+
+- The app writes participant responses to `disclosure_game_data.csv` on the server where the Streamlit app runs. This CSV does not automatically sync back to your GitHub repository.
+- **To download collected data from a deployed app**: open the deployed Streamlit app, enable the sidebar `Admin mode` checkbox, and click the **Download collected data CSV** button — this downloads the runtime file the app has written. This is the simplest way to retrieve data from Streamlit Community Cloud.
+
+### Admin authentication
+
+- The app now requires an admin key to access the CSV download. Set the admin key in Streamlit Cloud under "Settings → Secrets":
+
+```
+ADMIN_KEY = "your-strong-password"
+```
+
+- Alternatively, when running locally, set the `ADMIN_KEY` environment variable:
+
+```bash
+export ADMIN_KEY="your-strong-password"
+# Windows (PowerShell)
+$env:ADMIN_KEY = "your-strong-password"
+```
+
+- In the deployed app sidebar, enter the admin key and click "Log in as admin" to reveal the download button.
+
+## Recommended long-term storage for data
+
+- Use an external database or hosted service so your data is always centrally stored and accessible:
+	- **Supabase**: hosted Postgres with REST API and client libraries
+	- **Google Sheets**: easiest to view & download; use `gspread` with a service account
+	- **AWS S3** or **Google Cloud Storage**: for larger CSVs or file storage
+- When deploying, store API keys and credentials safely in Streamlit Secrets (app settings on Streamlit Cloud) instead of committing them to GitHub.
+
+If you want, I can implement Supabase or Google Sheets saving in the app and help set up the credentials.
 - **Render**: Create a Web Service, specify build & start commands.
 - **Vercel**: Not ideal for Streamlit; prefer Render or Heroku.
 
